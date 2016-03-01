@@ -1,0 +1,66 @@
+#!/usr/bin/perl -w
+
+use DBI;
+use Sys::Syslog qw(:DEFAULT setlogsock);
+use Digest::MD5 qw(md5 md5_hex);
+use strict;
+
+my $sqluser="squid";            # MySQL user name
+my $sqlpass="squidpass";            # MySQL user password
+my $sqlserv="db";    # MySQL server
+my $sqlport="3306";             # MySQL server port
+my $sqlbase="squid";            # MySQL database name
+
+setlogsock("unix");
+openlog("squid_mysql_auth", "pid", "user");
+
+
+
+my $dbh=DBI->connect("DBI:mysql:database=$sqlbase;host=$sqlserv;port=$sqlport",
+    $sqluser,$sqlpass,{AutoCommit=>1,RaiseError=>0,PrintError=>0});
+if (!defined($dbh)) {
+    syslog("err", "Error : %d, %s", $DBI::err, $DBI::errstr);
+    printf("ERR\n");
+    closelog();
+    exit(1);
+};
+
+my $AutoReconnect = $dbh->{mysql_auto_reconnect};
+ $dbh->{mysql_auto_reconnect} = $AutoReconnect ? 1 : 0;
+
+
+my $sth = $dbh->prepare("SELECT Password FROM users WHERE Name=? AND Enabled='TRUE'");
+
+$| = 1;
+while(<>) {
+    #-----------------------------------------------------------------
+    # Split login and password
+    #-----------------------------------------------------------------
+    my ($login, $password) = split(' ');
+    $sth->execute("$login");
+    if (defined($DBI::err)) {
+        printf("ERR\n");
+        syslog("err", "Error : %d, %s", $DBI::err, $DBI::errstr);
+        next;
+    };
+    #-----------------------------------------------------------------
+    # Test password
+    #-----------------------------------------------------------------
+    if ($sth->rows()>0) {
+        my ($md5) = $sth->fetchrow_array();
+        if ($md5 eq md5_hex("$password")) {
+            printf("OK\n");
+            #syslog("debug", "User %s auth sucess", $login);
+        } else {
+            printf("ERR\n");
+            syslog("info", "User %s auth failed", $login);
+        };
+    } else {
+        printf("ERR\n");
+        syslog("info", "User %s auth failed (0 rows)", $login);
+    };
+};
+$sth->finish();
+closelog();
+$dbh->disconnect();
+# end of file

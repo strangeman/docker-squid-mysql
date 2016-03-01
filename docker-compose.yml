@@ -1,0 +1,22 @@
+version: '2'
+services:
+  squid:
+    build:
+      context: ./squid
+    ports:
+      - "3128:3128"
+    links:
+      - db:mysql
+    volumes:
+      - spool:/var/spool/squid3
+      - squidlogs:/var/log/squid3
+      - guardlogs:/var/log/squidguard
+    restart: always
+  db:
+    build:
+      context: ./database
+    restart: always
+volumes:
+  spool:
+  squidlogs:
+  guardlogs:
